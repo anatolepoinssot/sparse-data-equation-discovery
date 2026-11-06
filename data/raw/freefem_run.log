@@ -1,0 +1,319 @@
+-- FreeFem++ v4.16 (Tue, Mar 31, 2026  7:04:20 PM - git v4.16)
+   file : C:\Users\HP\Desktop\Travail\25-26\PRe\projet\freefem\main_87x87.edp
+ Load: lg_fem lg_mesh lg_mesh3 eigenvalue 
+    1 : // =============================================================================
+    2 : // main_87x87.edp
+    3 : // =============================================================================
+    4 : // Modified version of the original IAEA N-TH main.edp for the sparse-data
+    5 : // equation discovery project.
+    6 : //
+    7 : // Key differences from the original:
+    8 : //   - Output grid: 87 x 87  (instead of 171 x 171)
+    9 : //   - Parameter loop: 200 values of 'a' in [A_MIN, A_MAX]
+   10 : //   - Temporal output: every 2 FreeFem++ steps  (dt_out = 0.02 s)
+   11 : //   - Simulation end: T = 2 s  (instead of 5 s)
+   12 : //   - Output: ONLY the 20 sensor locations  (T, phi2)
+   13 : //             instead of the full grid  -> massive I/O reduction
+   14 : //
+   15 : // Output files (in data/raw/):
+   16 : //   sensor_T.txt     -- temperature at 20 sensors
+   17 : //   sensor_phi2.txt  -- thermal neutron flux at 20 sensors
+   18 : //   One line per (parameter, time) pair:
+   19 : //       format:  a_value  t_value  val_sensor0  val_sensor1  ...  val_sensor19
+   20 : // =============================================================================
+   21 : 
+   22 : load "UMFPACK64"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\UMFPACK64 = 0);
+   23 : 
+   24 : // ---- Geometry ----------------------------------------------------------------
+   25 : int GS = 10;
+   26 : int labelNeumann = 0;
+   27 : int labelOut = 1;
+   28 : int labelMid = 2;
+   29 : 
+   30 : border B1(t=0,170){x=t; y=0; label=labelNeumann;}
+   31 : border B2(t=0,170){x=170; y=t; label=labelOut;}
+   32 : border B3(t=170,0){x=t; y=170; label=labelOut;}
+   33 : border B4(t=170,0){x=0; y=t; label=labelNeumann;}
+   34 : 
+   35 : border f2a0(t=0,150){x=0; y=t; label=labelMid;}
+   36 : border f2a1(t=0,50){x=t; y=150; label=labelMid;}
+   37 : border f2a2(t=150,130){x=50; y=t; label=labelMid;}
+   38 : border f2a3(t=50,90){x=t; y=130; label=labelMid;}
+   39 : border f2a4(t=130,110){x=90; y=t; label=labelMid;}
+   40 : border f2a5(t=90,110){x=t; y=110; label=labelMid;}
+   41 : border f2a6(t=110,90){x=110; y=t; label=labelMid;}
+   42 : border f2a7(t=110,130){x=t; y=90; label=labelMid;}
+   43 : border f2a8(t=90,50){x=130; y=t; label=labelMid;}
+   44 : border f2a9(t=130,150){x=t; y=50; label=labelMid;}
+   45 : border f2a10(t=50,0){x=150; y=t; label=labelMid;}
+   46 : border f2a11(t=150,0){x=t; y=0; label=labelMid;}
+   47 : 
+   48 : border i3s1(t=0,10){x=10; y=t; label=labelMid;}
+   49 : border i3s2(t=10,0){x=t; y=10; label=labelMid;}
+   50 : border i3c1(t=0,10){x=90; y=t; label=labelMid;}
+   51 : border i3c2(t=90,70){x=t; y=10; label=labelMid;}
+   52 : border i3c3(t=10,0){x=70; y=t; label=labelMid;}
+   53 : border i3d1(t=70,90){x=90; y=t; label=labelMid;}
+   54 : border i3d2(t=90,70){x=t; y=90; label=labelMid;}
+   55 : border i3e1(t=0,10){x=t; y=70; label=labelMid;}
+   56 : border i3e2(t=70,90){x=10; y=t; label=labelMid;}
+   57 : border i3e3(t=10,0){x=t; y=90; label=labelMid;}
+   58 : 
+   59 : border f1a1(t=0,30){x=t; y=130; label=labelMid;}
+   60 : border f1a2(t=130,110){x=30; y=t; label=labelMid;}
+   61 : border f1a3(t=30,70){x=t; y=110; label=labelMid;}
+   62 : border f1a4(t=110,70){x=70; y=t; label=labelMid;}
+   63 : border f1a5(t=70,110){x=t; y=70; label=labelMid;}
+   64 : border f1a6(t=70,30){x=110; y=t; label=labelMid;}
+   65 : border f1a7(t=110,130){x=t; y=30; label=labelMid;}
+   66 : border f1a8(t=30,0){x=130; y=t; label=labelMid;}
+   67 : 
+   68 : mesh Th = buildmesh(
+   69 :     B1(GS*17) + B2(GS*17) + B3(GS*17) + B4(GS*17)
+   70 :     + i3s1(GS*1) + i3s2(GS*1)
+   71 :     + i3c1(GS*1) + i3c2(GS*2) + i3c3(GS*1)
+   72 :     + i3d1(GS*2) + i3d2(GS*2)
+   73 :     + i3e1(GS*1) + i3e2(GS*2) + i3e3(GS*1)
+   74 :     + f1a1(-GS*3) + f1a2(-GS*2) + f1a3(-GS*4) + f1a4(-GS*4) + f1a5(-GS*4)
+   75 :     + f1a6(-GS*4) + f1a7(-GS*2) + f1a8(-GS*3)
+   76 :     + f2a1(-GS*5) + f2a2(-GS*2) + f2a3(-GS*4) + f2a4(-GS*2) + f2a5(-GS*2)
+   77 :     + f2a6(-GS*2) + f2a7(-GS*2) + f2a8(-GS*4) + f2a9(-GS*2) + f2a10(-GS*5)
+   78 : );
+   79 : 
+   80 : mesh Thcore = buildmesh(
+   81 :     f2a0(-GS*15) + f2a1(-GS*5) + f2a2(-GS*2) + f2a3(-GS*4) + f2a4(-GS*2) + f2a5(-GS*2)
+   82 :     + f2a6(-GS*2) + f2a7(-GS*2) + f2a8(-GS*4) + f2a9(-GS*2) + f2a10(-GS*5) + f2a11(-GS*15)
+   83 : );
+   84 : 
+   85 : // Region labels
+   86 : int cr1  = Th(5,  5 ).region;
+   87 : int cr2  = Th(80, 5 ).region;
+   88 : int cr3  = Th(80,80 ).region;
+   89 : int cr4  = Th(5, 80 ).region;
+   90 : int fuel2= Th(20,20 ).region;
+   91 : int fuel1= Th(100,100).region;
+   92 : int ref  = Th(120,120).region;
+   93 : 
+   94 : // ---- Physical parameters (from parameter.edp) --------------------------------
+   95 : real Bg      = 0.00008;
+   96 : real bou     = 0.4692;
+   97 : real lambda1 = 0.0127;
+   98 : real beta1   = 0.000247;
+   99 : real Tref    = 300.0;
+  100 : real gammaD1 = 3e-3;
+  101 : real gammaD2 = 3e-3;
+  102 : real gammaa1 = 2.034e-3;
+  103 : real gammaa2 = 2.034e-3;
+  104 : 
+  105 : // Material data per region
+  106 : real D11=1.5, D12=1.5, D13=1.5, D14=2.0;
+  107 : real D21=0.4, D22=0.4, D23=0.4, D24=0.3;
+  108 : real v11=1e7, v12=1e7, v13=1e7, v14=1e7;
+  109 : real v21=1e5, v22=1e5, v23=1e5, v24=1e5;
+  110 : real Sigmaa11=0.01+1.5*Bg, Sigmaa12=0.01+1.5*Bg, Sigmaa13=0.01+1.5*Bg, Sigmaa14=0.0+2.0*Bg;
+  111 : real Sigmaa21=0.08+0.4*Bg, Sigmaa22=0.085+0.4*Bg, Sigmaa23=0.130+0.4*Bg, Sigmaa24=0.01+0.3*Bg;
+  112 : real musigmaf11=0.0,  musigmaf12=0.0,  musigmaf13=0.0,  musigmaf14=0.0;
+  113 : real musigmaf21=0.135,musigmaf22=0.135,musigmaf23=0.135,musigmaf24=0.0;
+  114 : real chi11=1.0, chi12=1.0, chi13=1.0, chi14=1.0;
+  115 : real chi21=0.0, chi22=0.0, chi23=0.0, chi24=0.0;
+  116 : real Sigmas121=0.02, Sigmas122=0.02, Sigmas123=0.02, Sigmas124=0.04;
+  117 : real k1=102000, k2=90000, k3=5000, k4=14000;
+  118 : real rho1=10.5, rho2=10.5, rho3=5.0, rho4=2.27;
+  119 : real cp1=2.35,  cp2=2.35,  cp3=1.0,  cp4=1.4e-2;
+  120 : 
+  121 : fespace W0(Th, P0);
+  122 : 
+  123 : W0 D1 = D11*(region==fuel1)+D12*(region==fuel2)+D14*(region==ref)+D13*(region==cr1||region==cr2||region==cr3||region==cr4);
+  124 : W0 D2 = D21*(region==fuel1)+D22*(region==fuel2)+D24*(region==ref)+D23*(region==cr1||region==cr2||region==cr3||region==cr4);
+  125 : W0 v1 = v11*(region==fuel1)+v12*(region==fuel2)+v14*(region==ref)+v13*(region==cr1||region==cr2||region==cr3||region==cr4);
+  126 : W0 v2 = v21*(region==fuel1)+v22*(region==fuel2)+v24*(region==ref)+v23*(region==cr1||region==cr2||region==cr3||region==cr4);
+  127 : W0 Sigmaa1 = Sigmaa11*(region==fuel1)+Sigmaa12*(region==fuel2)+Sigmaa14*(region==ref)+Sigmaa13*(region==cr1||region==cr2||region==cr3||region==cr4);
+  128 : W0 Sigmaa2 = Sigmaa21*(region==fuel1)+Sigmaa22*(region==fuel2)+Sigmaa24*(region==ref)+Sigmaa23*(region==cr1||region==cr2||region==cr3||region==cr4);
+  129 : W0 musigmaf1 = musigmaf11*(region==fuel1)+musigmaf12*(region==fuel2)+musigmaf14*(region==ref)+musigmaf13*(region==cr1||region==cr2||region==cr3||region==cr4);
+  130 : W0 musigmaf2 = musigmaf21*(region==fuel1)+musigmaf22*(region==fuel2)+musigmaf24*(region==ref)+musigmaf23*(region==cr1||region==cr2||region==cr3||region==cr4);
+  131 : W0 chi1 = chi11*(region==fuel1)+chi12*(region==fuel2)+chi14*(region==ref)+chi13*(region==cr1||region==cr2||region==cr3||region==cr4);
+  132 : W0 chi2 = chi21*(region==fuel1)+chi22*(region==fuel2)+chi24*(region==ref)+chi23*(region==cr1||region==cr2||region==cr3||region==cr4);
+  133 : W0 Sigmas12 = Sigmas121*(region==fuel1)+Sigmas122*(region==fuel2)+Sigmas124*(region==ref)+Sigmas123*(region==cr1||region==cr2||region==cr3||region==cr4);
+  134 : W0 Tk  = k1*(region==fuel1)+k2*(region==fuel2)+k4*(region==ref)+k3*(region==cr1||region==cr2||region==cr3||region==cr4);
+  135 : W0 rho = rho1*(region==fuel1)+rho2*(region==fuel2)+rho4*(region==ref)+rho3*(region==cr1||region==cr2||region==cr3||region==cr4);
+  136 : W0 cp  = cp1*(region==fuel1)+cp2*(region==fuel2)+cp4*(region==ref)+cp3*(region==cr1||region==cr2||region==cr3||region==cr4);
+  137 : 
+  138 : W0 Sigmaa1ref = Sigmaa11*(region==fuel1)+Sigmaa12*(region==fuel2)+Sigmaa14*(region==ref)+Sigmaa13*(region==cr1||region==cr2||region==cr3||region==cr4);
+  139 : W0 Sigmaa2ref = Sigmaa21*(region==fuel1)+Sigmaa22*(region==fuel2)+Sigmaa24*(region==ref)+Sigmaa23*(region==cr1||region==cr2||region==cr3||region==cr4);
+  140 : W0 D1ref      = D11*(region==fuel1)+D12*(region==fuel2)+D14*(region==ref)+D13*(region==cr1||region==cr2||region==cr3||region==cr4);
+  141 : W0 D2ref      = D21*(region==fuel1)+D22*(region==fuel2)+D24*(region==ref)+D23*(region==cr1||region==cr2||region==cr3||region==cr4);
+  142 : W0 Sigmaa1steady, Sigmaa2steady;
+  143 : 
+  144 : // ---- FE spaces ---------------------------------------------------------------
+  145 : fespace Vh(Th,[P1,P1]);
+  146 : Vh [phi1,phi2],[w1,w2],[uni1,uni2],[phi1old,phi2old],[psi1,psi2],[phi10,phi20];
+  147 : 
+  148 : fespace Vvh(Th,P1);
+  149 : Vvh c, eta, cold, c0, T, T0, Told, deltaT, powerdensity, vtest;
+  150 : 
+  151 : phi1[] = 1;
+  152 : uni1[] = 1;
+  153 : 
+  154 : // ---- Sensor coordinates  (4x5 sub-grid in [30,110] cm) ----------------------
+  155 : // 4 x-positions: 30, 56.6667, 83.3333, 110 cm  (linspace(30,110,4))
+  156 : // 5 y-positions: 30, 50, 70, 90, 110 cm         (linspace(30,110,5))
+  157 : int Nsensors = 20;
+  158 : real[int] sx(Nsensors), sy(Nsensors);
+  159 : 
+  160 : real sx0=30.0,  sx1=56.6667, sx2=83.3333, sx3=110.0;
+  161 : real sy0=30.0, sy1=50.0, sy2=70.0, sy3=90.0, sy4=110.0;
+  162 : 
+  163 : sx[0]=sx0; sy[0]=sy0;   sx[1]=sx0; sy[1]=sy1;   sx[2]=sx0; sy[2]=sy2;
+  164 : sx[3]=sx0; sy[3]=sy3;   sx[4]=sx0; sy[4]=sy4;
+  165 : sx[5]=sx1; sy[5]=sy0;   sx[6]=sx1; sy[6]=sy1;   sx[7]=sx1; sy[7]=sy2;
+  166 : sx[8]=sx1; sy[8]=sy3;   sx[9]=sx1; sy[9]=sy4;
+  167 : sx[10]=sx2; sy[10]=sy0; sx[11]=sx2; sy[11]=sy1; sx[12]=sx2; sy[12]=sy2;
+  168 : sx[13]=sx2; sy[13]=sy3; sx[14]=sx2; sy[14]=sy4;
+  169 : sx[15]=sx3; sy[15]=sy0; sx[16]=sx3; sy[16]=sy1; sx[17]=sx3; sy[17]=sy2;
+  170 : sx[18]=sx3; sy[18]=sy3; sx[19]=sx3; sy[19]=sy4;
+  171 : 
+  172 : // ---- Output files ------------------------------------------------------------
+  173 : // Each line: a_value  t_value  sensor_0  sensor_1  ...  sensor_19
+  174 : ofstream outT("data/raw/sensor_T.txt");
+  175 : ofstream outPhi2("data/raw/sensor_phi2.txt");
+  176 : 
+  177 : // ---- Eigenvalue problem (steady state without thermal feedback) ---------------
+  178 : real keff  = 1.029;
+  179 : real sigma = 1.0 / 1.029;
+  180 : 
+  181 : varf op([phi1,phi2],[w1,w2]) =
+  182 :     int2d(Th)(D1*(dx(phi1)*dx(w1)+dy(phi1)*dy(w1)))
+  183 :     + int2d(Th)((Sigmaa1+Sigmas12)*phi1*w1)
+  184 :     + int2d(Th)(D2*(dx(phi2)*dx(w2)+dy(phi2)*dy(w2)))
+  185 :     + int2d(Th)(Sigmaa2*phi2*w2)
+  186 :     - int2d(Th)(Sigmas12*phi1*w2)
+  187 :     - int2d(Th)(sigma*chi1*(musigmaf1*phi1*w1+musigmaf2*phi2*w1))
+  188 :     - int2d(Th)(sigma*chi2*(musigmaf1*phi1*w2+musigmaf2*phi2*w2))
+  189 :     + int1d(Th,labelOut)(bou*phi1*w1)
+  190 :     + int1d(Th,labelOut)(bou*phi2*w2);
+  191 : 
+  192 : varf b([phi1,phi2],[w1,w2]) =
+  193 :     int2d(Th)(chi1*(musigmaf1*phi1*w1+musigmaf2*phi2*w1))
+  194 :     + int2d(Th)(chi2*(musigmaf1*phi1*w2+musigmaf2*phi2*w2));
+  195 : 
+  196 : matrix OP = op(Vh,Vh,solver=UMFPACK,eps=1e-16);
+  197 : matrix B  = b(Vh,Vh,solver=GMRES,eps=1e-20);
+  198 : 
+  199 : int Nev = 5;
+  200 : real[int] ev(Nev);
+  201 : Vh[int] [eV1,eV2](Nev);
+  202 : 
+  203 : int ntemp = 5;
+  204 : int k = EigenValue(OP,B,sym=false,sigma=sigma,value=ev,vector=eV1,tol=1e-10,maxit=0,ncv=0,nev=Nev);
+  205 : ntemp = ev.imin;
+  206 : keff  = 1.0/ev[ntemp];
+  207 : cout << "Initial keff: " << keff << endl;
+  208 : phi1[] = eV1[ntemp][];
+  209 : 
+  210 : real int1   = int2d(Th,qforder=1)(musigmaf1*phi1 + musigmaf2*phi2);
+  211 : real squ    = int2d(Thcore,qforder=1)(uni1);
+  212 : phi1[]      = phi1[] / (int1/squ);
+  213 : 
+  214 : real powerinitial = int2d(Th,qforder=1)(musigmaf1*phi1 + musigmaf2*phi2);
+  215 : real C = 5e7 / powerinitial;
+  216 : powerdensity = C * (musigmaf1*phi1 + musigmaf2*phi2);
+  217 : 
+  218 : real Tboundary = 300.0;
+  219 : problem thermalsteady(T, vtest) =
+  220 :     int2d(Th)(Tk*(dx(T)*dx(vtest)+dy(T)*dy(vtest)))
+  221 :     - int2d(Th)(powerdensity*vtest)
+  222 :     + on(labelOut, T=Tboundary);
+  223 : thermalsteady;
+  224 : 
+  225 : // ---- Steady-state loop (with thermal feedback) --------------------------------
+  226 : real epsT=1, epskeff=1, T1, keff0=keff;
+  227 : Told = T;
+  228 : T1   = T[].max;
+  229 : int j = 0;
+  230 : 
+  231 : while (epskeff > 1e-5 || epsT > 1e-5) {
+  232 :     j++;
+  233 :     D1       = D1ref      + gammaD1 * log(T/Tref);
+  234 :     D2       = D2ref      + gammaD2 * log(T/Tref);
+  235 :     Sigmaa1  = Sigmaa1ref + 0.03*gammaa1 * log(T/Tref);
+  236 :     Sigmaa2  = Sigmaa2ref + 0.03*gammaa2 * log(T/Tref);
+  237 :     sigma    = 1.0/keff;
+  238 :     OP = op(Vh,Vh,solver=UMFPACK,eps=1e-16);
+  239 :     B  = b(Vh,Vh,solver=GMRES,eps=1e-20);
+  240 :     k  = EigenValue(OP,B,sym=false,sigma=sigma,value=ev,vector=eV1,tol=1e-10,maxit=0,ncv=0,nev=Nev);
+  241 :     ntemp = ev.imin;
+  242 :     keff  = 1.0/ev[ntemp];
+  243 :     phi1[] = eV1[ntemp][];
+  244 :     int1   = int2d(Th,qforder=1)(musigmaf1*phi1 + musigmaf2*phi2);
+  245 :     phi1[] = phi1[] / (int1/squ);
+  246 :     powerinitial = int2d(Th,qforder=1)(musigmaf1*phi1 + musigmaf2*phi2);
+  247 :     C = 5e7/powerinitial;
+  248 :     powerdensity = C*(musigmaf1*phi1 + musigmaf2*phi2);
+  249 :     thermalsteady;
+  250 :     deltaT   = abs(T-Told);
+  251 :     epsT     = deltaT[].max / T1;
+  252 :     epskeff  = abs(keff-keff0) / keff0;
+  253 :     keff0    = keff;
+  254 :     Told     = T;
+  255 :     T1       = T[].max;
+  256 : }
+  257 : cout << "Steady-state converged in " << j << " iterations. keff=" << keff << endl;
+  258 : 
+  259 : // Store converged steady-state fields as references for the transient
+  260 : c = beta1/(keff*lambda1) * (musigmaf1*phi1 + musigmaf2*phi2);
+  261 : [phi10,phi20] = [phi1,phi2];
+  262 : c0  = c;
+  263 : T0  = T;
+  264 : D1ref         = D1;
+  265 : D2ref         = D2;
+  266 : Sigmaa1steady = Sigmaa1;
+  267 : Sigmaa2steady = Sigmaa2;
+  268 : 
+  269 : // ---- Transient problems ------------------------------------------------------
+  270 : real dt    = 0.01;    // FreeFem++ internal time step [s]
+  271 : real Time  = 2.0;     // End of transient [s]
+  272 : int  dumpEvery = 2;   // Write output every 2 steps -> dt_out = 0.02 s
+  273 : 
+  274 : real sigma2 = (1.0-beta1)/keff;
+  275 : real sigma3 = beta1/keff;
+  276 : 
+  277 : problem neutronics([phi1,phi2,c],[psi1,psi2,eta]) =
+  278 :     int2d(Th)((phi1*psi1/dt)/v1)
+  279 :     + int2d(Th)((phi2*psi2/dt)/v2)
+  280 :     + int2d(Th)(c*eta/dt)
+  281 :     + int2d(Th)(D1*(dx(phi1)*dx(psi1)+dy(phi1)*dy(psi1)))
+  282 :     + int2d(Th)(D2*(dx(phi2)*dx(psi2)+dy(phi2)*dy(psi2)))
+  283 :     + int2d(Th)((Sigmaa1+Sigmas12)*phi1*psi1)
+  284 :     + int2d(Th)(Sigmaa2*phi2*psi2)
+  285 :     - int2d(Th)(Sigmas12*phi1*psi2)
+  286 :     - int2d(Th)(chi1*sigma2*(musigmaf1*phi1+musigmaf2*phi2)*psi1)
+  287 :     - int2d(Th)(chi1*lambda1*c*psi1)
+  288 :     - int2d(Th)(chi2*sigma2*(musigmaf1*phi1+musigmaf2*phi2)*psi2)
+  289 :     - int2d(Th)(chi2*lambda1*c*psi2)
+  290 :     - int2d(Th)(sigma3*(musigmaf1*phi1+musigmaf2*phi2)*eta)
+  291 :     + int2d(Th)(lambda1*c*eta)
+  292 :     - int2d(Th)((phi1old*psi1/dt)/v1)
+  293 :     - int2d(Th)((phi2old*psi2/dt)/v2)
+  294 :     - int2d(Th)(cold*eta/dt)
+  295 :     + int1d(Th,labelOut)(bou*phi1*psi1)
+  296 :     + int1d(Th,labelOut)(bou*phi2*psi2)
+  297 :     + int1d(Th,labelOut)(bou*c*eta);
+  298 : 
+  299 : problem heatdiffusion(T, vtest) =
+  300 :     int2d(Th)(rho*cp*(T*vtest)/dt)
+  301 :     - int2d(Th)(rho*cp*(Told*vtest)/dt)
+  302 :     + int2d(Th)(Tk*(dx(T)*dx(vtest)+dy(T)*dy(vtest)))
+  303 :     - int2d(Th)(powerdensity*vtest)
+  304 :     + on(labelOut, T=Tboundary);
+  305 : 
+  306 : // ---- Parametric loop: 200 values of 'a' in [0.880, 0.920] -------------------
+  307 : int    totalloops   = 200;
+  308 : real   a_
+ Error line number 308, in file C:\Users\HP\Desktop\Travail\25-26\PRe\projet\freefem\main_87x87.edp, before  token _
+syntax error
+  current line = 308
+Compile error : syntax error
+	line number :308, _
+error Compile error : syntax error
+	line number :308, _
+ code = 1 mpirank: 0
